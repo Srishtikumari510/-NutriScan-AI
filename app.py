@@ -1,141 +1,109 @@
-"""
-NutriScan AI - Food Nutrition Analyzer
-Detects food from an image, calculates nutrition based on user-provided weight.
-"""
-
 import streamlit as st
 import pandas as pd
-from ultralytics import YOLO
+from datetime import datetime
 from PIL import Image
-import os
-import tempfile
+import numpy as np
+from ultralytics import YOLO
 
-# ------------------------------
-# Page configuration
-# ------------------------------
-st.set_page_config(
-    page_title="NutriScan AI",
-    page_icon="🍽️",
-    layout="centered",
-    initial_sidebar_state="auto"
-)
-
-# ------------------------------
-# Load model and nutrition data (cached for performance)
-# ------------------------------
+# Load the model
 @st.cache_resource
 def load_model():
-    """Load the YOLO classification model."""
-    model_path = "best.pt"  # Make sure this file is in the same directory as app.py
-    if not os.path.exists(model_path):
-        st.error(f"Model file '{model_path}' not found. Please add it to the app directory.")
-        st.stop()
-    return YOLO(model_path)
+    return YOLO('best.pt')
 
+model = load_model()
+
+# Load nutrition data from CSV
 @st.cache_data
 def load_nutrition_data():
-    """Load nutrition CSV and return a dict keyed by food_class."""
-    csv_path = "nutrition_data.csv"
-    if not os.path.exists(csv_path):
-        st.error(f"Nutrition CSV '{csv_path}' not found. Please add it to the app directory.")
-        st.stop()
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv('nutrition_data.csv')
     # Convert to dictionary for faster lookup
-    return df.set_index("food_class").to_dict(orient="index")
+    return df.set_index('food_name').to_dict(orient='index')
 
-# ------------------------------
-# Helper functions
-# ------------------------------
-def predict_food(image, model):
-    """Run prediction on an image and return top food name and confidence."""
-    results = model(image)
-    probs = results[0].probs
-    top1_idx = probs.top1
-    food_name = results[0].names[top1_idx]
-    confidence = probs.top1conf.item()
-    return food_name, confidence
+NUTRIENT_DB = load_nutrition_data()
+DEFAULT_NUTRIENTS = {'calories': 200, 'protein': 5, 'carbs': 20, 'fat': 10, 'fiber': 0}
 
-def calculate_nutrition(food_name, weight_g, nutrition_dict):
-    """Calculate nutrition for the given weight based on per-100g values."""
-    if food_name not in nutrition_dict:
-        return None
-    data = nutrition_dict[food_name]
-    factor = weight_g / 100.0
-    return {
-        "calories": data["calories_per_100g"] * factor,
-        "protein": data["protein_g_per_100g"] * factor,
-        "carbs": data["carbs_g_per_100g"] * factor,
-        "fat": data["fat_g_per_100g"] * factor,
-    }
+st.set_page_config(page_title="AI Food Nutrition Analyzer", layout="wide")
+st.title("🍽️ AI Food Nutrition Analyzer")
+st.markdown("Upload a photo – AI will identify the food and calculate nutrition.")
 
-# ------------------------------
-# Main UI
-# ------------------------------
-st.title("🍽️ NutriScan AI")
-st.markdown("### Know exactly what you eat")
-st.write("Upload a photo of your meal, enter its weight, and get an instant nutritional breakdown.")
+if 'history' not in st.session_state:
+    st.session_state.history = []
 
-# Two-column layout for inputs
 col1, col2 = st.columns(2)
+
 with col1:
-    uploaded_file = st.file_uploader(
-        "📸 Upload food image", 
-        type=["jpg", "jpeg", "png"],
-        help="Take a clear photo of your meal"
-    )
+    uploaded_file = st.file_uploader("Choose a food image...", type=["jpg", "jpeg", "png"])
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded image", use_column_width=True)
+
+        if st.button("🔍 Identify Food", type="primary"):
+            with st.spinner("AI is analyzing..."):
+                results = model(image, imgsz=224)
+                probs = results[0].probs
+                top1_idx = probs.top1
+                confidence = probs.top1conf.item()
+                class_name = results[0].names[top1_idx]
+
+                st.success(f"### 🎯 Identified: **{class_name.replace('_', ' ').title()}**")
+                st.info(f"Confidence: {confidence:.1%}")
+
+                st.session_state.detected_food = class_name
+                st.session_state.confidence = confidence
+
 with col2:
-    weight = st.number_input(
-        "⚖️ Meal weight (grams)", 
-        min_value=0.0, 
-        step=10.0,
-        help="Weigh your food for accurate results"
-    )
-
-# When image and weight are provided
-if uploaded_file is not None and weight > 0:
-    # Display uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Your meal", use_container_width=False, width=300)
-    
-    # Load model and nutrition data
-    with st.spinner("🔍 Analyzing your food..."):
-        model = load_model()
-        nutrition_dict = load_nutrition_data()
-        
-        # Predict
-        food_name, confidence = predict_food(image, model)
-        
-        # Show detection result
-        st.success(f"✅ **Detected:** {food_name.replace('_', ' ').title()}")
-        st.write(f"*Confidence: {confidence:.1%}*")
-        
-        # Calculate nutrition
-        nutrition = calculate_nutrition(food_name, weight, nutrition_dict)
-        
-        if nutrition:
-            st.subheader("📊 Nutrition Facts")
-            # Display metrics in columns
-            metric_cols = st.columns(4)
-            metric_cols[0].metric("🔥 Calories", f"{nutrition['calories']:.0f} kcal")
-            metric_cols[1].metric("💪 Protein", f"{nutrition['protein']:.1f} g")
-            metric_cols[2].metric("🍚 Carbohydrates", f"{nutrition['carbs']:.1f} g")
-            metric_cols[3].metric("🥑 Fat", f"{nutrition['fat']:.1f} g")
-            
-            # Optional: Macronutrient bar chart
-            st.subheader("Macronutrient distribution")
-            macro_df = pd.DataFrame({
-                "Nutrient": ["Protein", "Carbs", "Fat"],
-                "Grams": [nutrition["protein"], nutrition["carbs"], nutrition["fat"]]
-            })
-            st.bar_chart(macro_df.set_index("Nutrient"))
+    st.subheader("⚖️ Nutrition Calculator")
+    if 'detected_food' in st.session_state:
+        food_key = st.session_state.detected_food
+        # Try exact match first, then substring match
+        if food_key in NUTRIENT_DB:
+            nutrients = NUTRIENT_DB[food_key]
         else:
-            st.warning(f"⚠️ Nutrition data for '{food_name}' is missing. Please add it to `nutrition_data.csv`.")
-            
-elif uploaded_file is not None and weight == 0:
-    st.warning("Please enter the weight of your meal to calculate nutrition.")
-elif uploaded_file is None and weight > 0:
-    st.info("Upload an image to get started.")
+            # Fallback: find any key that contains food_key or vice versa
+            matched_key = None
+            for db_key in NUTRIENT_DB:
+                if db_key in food_key or food_key in db_key:
+                    matched_key = db_key
+                    break
+            if matched_key:
+                nutrients = NUTRIENT_DB[matched_key]
+                st.info(f"Using nutrition data for '{matched_key}'")
+            else:
+                nutrients = DEFAULT_NUTRIENTS
+                st.warning(f"Nutrition data for '{food_key}' not found, using default values.")
 
-# Footer
-st.markdown("---")
-st.caption("**Note:** Nutritional values are estimates. For medical advice, consult a professional.")
+        weight = st.number_input("Weight (grams)", min_value=1, max_value=1000, value=150, step=10)
+
+        if st.button("Calculate Nutrition", type="primary"):
+            factor = weight / 100
+            calories = round(nutrients['calories'] * factor, 1)
+            protein = round(nutrients['protein'] * factor, 1)
+            carbs = round(nutrients['carbs'] * factor, 1)
+            fat = round(nutrients['fat'] * factor, 1)
+
+            st.session_state.history.append({
+                'Food': food_key.replace('_', ' ').title(),
+                'Weight (g)': weight,
+                'Calories (kcal)': calories,
+                'Protein (g)': protein,
+                'Carbs (g)': carbs,
+                'Fat (g)': fat,
+                'Time': datetime.now().strftime("%H:%M:%S")
+            })
+
+            st.success("### 📊 Results")
+            col_a, col_b, col_c, col_d = st.columns(4)
+            with col_a: st.metric("🔥 Calories", f"{calories} kcal")
+            with col_b: st.metric("💪 Protein", f"{protein} g")
+            with col_c: st.metric("🍚 Carbs", f"{carbs} g")
+            with col_d: st.metric("🥑 Fat", f"{fat} g")
+
+if st.session_state.history:
+    st.markdown("---")
+    st.subheader("📜 Today's Food Log")
+    df = pd.DataFrame(st.session_state.history)
+    st.dataframe(df, use_container_width=True)
+    total_cals = df['Calories (kcal)'].sum()
+    st.info(f"📊 Total calories today: {total_cals:.0f} kcal")
+    csv = df.to_csv(index=False)
+    st.download_button("📥 Download Log", csv, "food_log.csv")
