@@ -1,6 +1,0 @@
-[server]
-maxUploadSize = 10
-
-[runner]
-# Force Python 3.10 (Streamlit Cloud supports 3.9–3.12)
-# No direct version pin, but ensure your repo doesn't use 3.14.
