@@ -20,3 +20,52 @@ NutriScan AI is an intelligent web application that identifies food from an imag
 5. Results are scaled to the entered weight and displayed.
 
 ## 📁 Project Structure
+├── app.py # Streamlit application
+├── best.pt # Trained YOLOv8 classification model
+├── nutrition_data.csv # Nutrition database (101 foods)
+├── requirements.txt # Python dependencies
+└── README.md # This file
+
+
+## 🚀 Deployment
+This app is deployed on **Streamlit Cloud**. To deploy your own instance:
+
+1. Clone this repository.
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run locally: `streamlit run app.py`
+4. Or deploy to Streamlit Cloud by connecting your GitHub repo.
+
+## 📊 Dataset & Model
+- **Dataset:** [Food-101](https://www.kaggle.com/datasets/dansbecker/food-101) – 101,000 images of 101 food categories.
+- **Model:** YOLOv8n-cls (classification) trained for 5 epochs (63.6% top‑1 accuracy, 86.3% top‑5). For better accuracy, retrain with more epochs.
+- **Nutrition Data:** Gathered from public sources (USDA, nutrition databases). Approximate values – refine as needed.
+
+## 🧪 Example
+**Input:** Photo of pizza + weight 200g  
+**Output:**  
+- Detected: Pizza (85% confidence)  
+- Calories: 532 kcal  
+- Protein: 22g  
+- Carbs: 66g  
+- Fat: 20g  
+
+## 📝 Future Improvements
+- Multi‑food detection (recognize several items on a plate)
+- Barcode scanning for packaged foods
+- Meal history and daily tracking
+- Voice input for hands‑free use
+- Export reports as PDF
+
+## 🤝 Contributing
+Feel free to open issues or pull requests to improve the nutrition database or model accuracy.
+
+## 📄 License
+MIT License – free for personal and educational use.
+
+## 🙏 Acknowledgements
+- Ultralytics for YOLOv8
+- Food-101 dataset creators
+- Streamlit for the awesome framework
+
+---
+**Made with ❤️ for healthier eating**
