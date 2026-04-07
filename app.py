@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from datetime import datetime
 from PIL import Image
 import os
@@ -66,36 +65,56 @@ html, body {
 </style>
 """, unsafe_allow_html=True)
 
-# ----------------------------- MODEL ------------------------------------------
+# ----------------------------- MODEL DOWNLOAD & LOAD --------------------------
 MODEL_PATH = "best.pt"
+
+if not os.path.exists(MODEL_PATH):
+    with st.spinner("Downloading AI model... please wait ⏳"):
+        url = "https://drive.google.com/uc?id=1dry3hG2bSmKQgFRK4K4REkf07JE1hcCv"
+        gdown.download(url, MODEL_PATH, quiet=False)
 
 @st.cache_resource
 def load_model():
-    if not os.path.exists(MODEL_PATH):
-        with st.spinner("Downloading model..."):
-            url = "https://drive.google.com/uc?id=1dry3hG2bSmKQgFRK4K4REkf07JE1hcCv"
-            gdown.download(url, MODEL_PATH, quiet=False)
     return YOLO(MODEL_PATH)
 
 model = load_model()
 
-# ----------------------------- DATA (FIXED) -----------------------------------
+# ----------------------------- NUTRITION DATA (ROBUST) ------------------------
 @st.cache_data
-def load_data():
-    df = pd.read_csv("nutrition_data.csv")
+def load_nutrition_data():
+    df = pd.read_csv('nutrition_data.csv')
+
+    # Normalize column names
     df.columns = df.columns.str.strip().str.lower()
+
+    # Rename columns to match app format
     df = df.rename(columns={
-        'food_class': 'food_class',
+        'food_class': 'food_name',
         'calories_per_100g': 'calories',
         'protein_g_per_100g': 'protein',
         'carbs_g_per_100g': 'carbs',
         'fat_g_per_100g': 'fat'
     })
-    return df.set_index("food_class").to_dict("index")
 
-DB = load_data()   # ✅ IMPORTANT: actually call the function
+    # Validate required columns
+    required_cols = ['food_name', 'calories', 'protein', 'carbs', 'fat']
+    for col in required_cols:
+        if col not in df.columns:
+            st.error(f"Missing column: {col}")
+            st.stop()
 
-# ----------------------------- SESSION ----------------------------------------
+    return df.set_index('food_name').to_dict(orient='index')
+
+NUTRIENT_DB = load_nutrition_data()
+
+DEFAULT_NUTRIENTS = {
+    'calories': 200,
+    'protein': 5,
+    'carbs': 20,
+    'fat': 10
+}
+
+# ----------------------------- SESSION STATE ----------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "Home"
 if "history" not in st.session_state:
@@ -124,9 +143,7 @@ def home():
     """, unsafe_allow_html=True)
 
     st.markdown("## 🚀 What We Do")
-
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.markdown('<div class="card">📸 Upload food image</div>', unsafe_allow_html=True)
     with col2:
@@ -135,7 +152,6 @@ def home():
         st.markdown('<div class="card">📊 Get nutrition insights</div>', unsafe_allow_html=True)
 
     st.markdown("### 🎯 Quick Health Tool")
-
     weight = st.number_input("Weight (kg)", 30, 150, 60)
     height = st.number_input("Height (cm)", 100, 220, 165)
 
@@ -147,7 +163,7 @@ def home():
         st.session_state.page = "Analyzer"
         st.rerun()
 
-# ----------------------------- ANALYZER ---------------------------------------
+# ----------------------------- ANALYZER PAGE ----------------------------------
 def analyzer():
     st.title("🍽️ Food Analyzer")
 
@@ -157,7 +173,7 @@ def analyzer():
         image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption="Uploaded Image", use_container_width=True)
 
-        if st.button("🔍 Identify Food"):
+        if st.button("🔍 Identify Food", type="primary"):
             with st.spinner("AI is analyzing... 🤖"):
                 results = model(image, imgsz=224)
 
@@ -173,63 +189,70 @@ def analyzer():
                 st.session_state.detected_food = class_name
                 st.session_state.confidence = confidence
 
-                st.success(f"🎯 {class_name.replace('_',' ').title()} ({confidence:.1%})")
+                st.success(f"### 🎯 Identified: **{class_name.replace('_', ' ').title()}**")
+                st.info(f"Confidence: {confidence:.1%}")
 
-    # ---------------- NUTRITION (with robust matching) ----------------
+    # ---------------- NUTRITION CALCULATOR (ROBUST MATCHING) ----------------
     if "detected_food" in st.session_state:
         st.markdown("### ⚖️ Nutrition Calculator")
 
-        food_key = st.session_state.detected_food.lower().strip()
+        food_key = st.session_state.detected_food  # keep original case
 
-        # ✅ Improved matching (from first code block)
-        if food_key in DB:
-            nutrients = DB[food_key]
+        # Exact match first
+        if food_key in NUTRIENT_DB:
+            nutrients = NUTRIENT_DB[food_key]
         else:
-            match = None
-            for k in DB:
-                if k in food_key or food_key in k:
-                    match = k
+            # Fallback substring matching
+            matched_key = None
+            for db_key in NUTRIENT_DB:
+                if db_key in food_key or food_key in db_key:
+                    matched_key = db_key
                     break
-            if match:
-                nutrients = DB[match]
-                st.info(f"Using data for {match}")
+            if matched_key:
+                nutrients = NUTRIENT_DB[matched_key]
+                st.info(f"Using nutrition data for '{matched_key}'")
             else:
-                nutrients = {
-                    "calories": 200,
-                    "protein": 5,
-                    "carbs": 20,
-                    "fat": 10
-                }
-                st.warning("Using default nutrition values")
+                nutrients = DEFAULT_NUTRIENTS
+                st.warning(f"Nutrition data for '{food_key}' not found, using default values.")
 
-        weight = st.slider("Weight (grams)", 50, 500, 150)
+        weight = st.number_input("Weight (grams)", min_value=1, max_value=1000, value=150, step=10)
 
-        if st.button("Calculate Nutrition"):
+        if st.button("Calculate Nutrition", type="primary"):
             factor = weight / 100
 
-            # ✅ Safe access with .get()
-            cal = nutrients.get("calories", 200) * factor
-            pro = nutrients.get("protein", 5) * factor
-            carb = nutrients.get("carbs", 20) * factor
-            fat = nutrients.get("fat", 10) * factor
+            calories = round(nutrients['calories'] * factor, 1)
+            protein = round(nutrients['protein'] * factor, 1)
+            carbs = round(nutrients['carbs'] * factor, 1)
+            fat = round(nutrients['fat'] * factor, 1)
 
-            st.metric("🔥 Calories", f"{cal:.1f}")
-            st.metric("💪 Protein", f"{pro:.1f}")
-            st.metric("🍚 Carbs", f"{carb:.1f}")
-            st.metric("🥑 Fat", f"{fat:.1f}")
-
-            st.bar_chart(pd.DataFrame({
-                "value": [pro, carb, fat]
-            }, index=["Protein", "Carbs", "Fat"]))
-
-            # ✅ Add timestamp to history
+            # Save to history
             st.session_state.history.append({
-                "food": food_key,
-                "calories": cal,
-                "time": datetime.now().strftime("%H:%M:%S")
+                'Food': food_key.replace('_', ' ').title(),
+                'Weight (g)': weight,
+                'Calories (kcal)': calories,
+                'Protein (g)': protein,
+                'Carbs (g)': carbs,
+                'Fat (g)': fat,
+                'Time': datetime.now().strftime("%H:%M:%S")
             })
 
-# ----------------------------- INSIGHTS ---------------------------------------
+            st.success("### 📊 Results")
+            col_a, col_b, col_c, col_d = st.columns(4)
+            with col_a:
+                st.metric("🔥 Calories", f"{calories} kcal")
+            with col_b:
+                st.metric("💪 Protein", f"{protein} g")
+            with col_c:
+                st.metric("🍚 Carbs", f"{carbs} g")
+            with col_d:
+                st.metric("🥑 Fat", f"{fat} g")
+
+            # Optional macro bar chart
+            st.bar_chart(pd.DataFrame({
+                "value": [protein, carbs, fat]
+            }, index=["Protein", "Carbs", "Fat"]))
+
+# ----------------------------- INSIGHTS PAGE ----------------------------------
 def insights():
     st.title("📊 Insights")
 
@@ -238,12 +261,23 @@ def insights():
         return
 
     df = pd.DataFrame(st.session_state.history)
-    st.dataframe(df)
 
-    # Show total calories per food item
+    # Show full history table
+    st.subheader("📜 Today's Food Log")
+    st.dataframe(df, use_container_width=True)
+
+    # Total calories summary
+    total_cals = df['Calories (kcal)'].sum()
+    st.info(f"📊 Total calories today: {total_cals:.0f} kcal")
+
+    # Bar chart of total calories per food
     st.subheader("Total Calories per Food")
-    total_cal = df.groupby("food")["calories"].sum().sort_values(ascending=False)
-    st.bar_chart(total_cal)
+    total_cal_per_food = df.groupby("Food")["Calories (kcal)"].sum().sort_values(ascending=False)
+    st.bar_chart(total_cal_per_food)
+
+    # Download button
+    csv = df.to_csv(index=False)
+    st.download_button("📥 Download Log (CSV)", csv, "food_log.csv")
 
 # ----------------------------- ROUTER -----------------------------------------
 if st.session_state.page == "Home":
