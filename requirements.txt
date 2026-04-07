@@ -1,6 +1,8 @@
-streamlit==1.28.1
+streamlit
 pandas
-pillow
 numpy
-ultralytics==8.2.0
-opencv-python-headless==4.9.0.80
+pillow
+plotly
+ultralytics
+torch
+gdown
