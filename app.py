@@ -26,16 +26,37 @@ model = load_model()
 @st.cache_data
 def load_nutrition_data():
     df = pd.read_csv('nutrition_data.csv')
+
+    # Normalize column names
+    df.columns = df.columns.str.strip().str.lower()
+
+    # Rename columns to match app format
+    df = df.rename(columns={
+        'food_class': 'food_name',
+        'calories_per_100g': 'calories',
+        'protein_g_per_100g': 'protein',
+        'carbs_g_per_100g': 'carbs',
+        'fat_g_per_100g': 'fat'
+    })
+
+    # Validate required columns
+    required_cols = ['food_name', 'calories', 'protein', 'carbs', 'fat']
+    for col in required_cols:
+        if col not in df.columns:
+            st.error(f"Missing column: {col}")
+            st.stop()
+
     return df.set_index('food_name').to_dict(orient='index')
 
+# 🔥 IMPORTANT: CALL FUNCTION
 NUTRIENT_DB = load_nutrition_data()
 
+# -------------------- DEFAULT VALUES --------------------
 DEFAULT_NUTRIENTS = {
     'calories': 200,
     'protein': 5,
     'carbs': 20,
-    'fat': 10,
-    'fiber': 0
+    'fat': 10
 }
 
 # -------------------- UI CONFIG --------------------
@@ -62,6 +83,11 @@ with col1:
         if st.button("🔍 Identify Food", type="primary"):
             with st.spinner("AI is analyzing... 🤖"):
                 results = model(image, imgsz=224)
+
+                # ✅ SAFE CHECK
+                if results[0].probs is None:
+                    st.error("No food detected. Try another image.")
+                    st.stop()
 
                 probs = results[0].probs
                 top1_idx = probs.top1
