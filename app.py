@@ -144,48 +144,77 @@ def home():
 def analyzer():
     st.title("🍽️ Food Analyzer")
 
-    file = st.file_uploader("Upload food image")
+    uploaded_file = st.file_uploader("Upload food image", type=["jpg", "jpeg", "png"])
 
-    if file:
-        img = Image.open(file)
-        st.image(img)
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Uploaded Image", use_container_width=True)
 
-        if st.button("Analyze"):
-            res = model(img)
+        # ---------------- DETECTION ----------------
+        if st.button("🔍 Identify Food"):
+            with st.spinner("AI is analyzing... 🤖"):
+                results = model(image, imgsz=224)
 
-            if res[0].probs:
-                idx = res[0].probs.top1
-                food = res[0].names[idx]
-                conf = res[0].probs.top1conf.item()
+                if results[0].probs is None:
+                    st.error("❌ No food detected. Try another image.")
+                    return
 
-                st.success(f"{food} ({conf:.1%})")
+                probs = results[0].probs
+                top1_idx = probs.top1
+                confidence = probs.top1conf.item()
+                class_name = results[0].names[top1_idx]
 
-                nutrients = DB.get(food, {"calories":200,"protein":5,"carbs":20,"fat":10})
+                st.session_state.detected_food = class_name
+                st.session_state.confidence = confidence
 
-                weight = st.slider("Weight (g)", 50, 500, 150)
+                st.success(f"🎯 {class_name.replace('_',' ').title()} ({confidence:.1%})")
 
-                if st.button("Calculate"):
-                    factor = weight/100
+    # ---------------- NUTRITION ----------------
+    if "detected_food" in st.session_state:
+        st.markdown("### ⚖️ Nutrition Calculator")
 
-                    cal = nutrients["calories"]*factor
-                    pro = nutrients["protein"]*factor
-                    carb = nutrients["carbs"]*factor
-                    fat = nutrients["fat"]*factor
+        food_key = st.session_state.detected_food.lower()
 
-                    st.metric("Calories", cal)
-                    st.metric("Protein", pro)
-                    st.metric("Carbs", carb)
-                    st.metric("Fat", fat)
+        # Match DB
+        if food_key in DB:
+            nutrients = DB[food_key]
+        else:
+            matched = None
+            for k in DB:
+                if k in food_key or food_key in k:
+                    matched = k
+                    break
 
-                    st.bar_chart(pd.DataFrame({
-                        "value":[pro,carb,fat]
-                    }, index=["Protein","Carbs","Fat"]))
+            if matched:
+                nutrients = DB[matched]
+                st.info(f"Using data for '{matched}'")
+            else:
+                nutrients = {"calories":200,"protein":5,"carbs":20,"fat":10}
+                st.warning("Using default nutrition values")
 
-                    st.session_state.history.append({
-                        "food":food,
-                        "cal":cal
-                    })
+        weight = st.slider("Weight (grams)", 50, 500, 150)
 
+        if st.button("Calculate Nutrition"):
+            factor = weight / 100
+
+            cal = nutrients["calories"] * factor
+            pro = nutrients["protein"] * factor
+            carb = nutrients["carbs"] * factor
+            fat = nutrients["fat"] * factor
+
+            st.metric("🔥 Calories", f"{cal:.1f}")
+            st.metric("💪 Protein", f"{pro:.1f}")
+            st.metric("🍚 Carbs", f"{carb:.1f}")
+            st.metric("🥑 Fat", f"{fat:.1f}")
+
+            st.bar_chart(pd.DataFrame({
+                "value": [pro, carb, fat]
+            }, index=["Protein", "Carbs", "Fat"]))
+
+            st.session_state.history.append({
+                "food": food_key,
+                "cal": cal
+            })
 # ----------------------------- INSIGHTS ---------------------------------------
 def insights():
     st.title("📊 Insights")
