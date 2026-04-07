@@ -79,15 +79,11 @@ def load_model():
 
 model = load_model()
 
-# ----------------------------- DATA -------------------------------------------
+# ----------------------------- DATA (FIXED) -----------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("nutrition_data.csv")
-
-    # Normalize column names
     df.columns = df.columns.str.strip().str.lower()
-
-    # ✅ IMPORTANT: Rename properly
     df = df.rename(columns={
         'food_class': 'food_class',
         'calories_per_100g': 'calories',
@@ -95,8 +91,9 @@ def load_data():
         'carbs_g_per_100g': 'carbs',
         'fat_g_per_100g': 'fat'
     })
-
     return df.set_index("food_class").to_dict("index")
+
+DB = load_data()   # ✅ IMPORTANT: actually call the function
 
 # ----------------------------- SESSION ----------------------------------------
 if "page" not in st.session_state:
@@ -160,7 +157,6 @@ def analyzer():
         image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption="Uploaded Image", use_container_width=True)
 
-        # ---------------- DETECTION ----------------
         if st.button("🔍 Identify Food"):
             with st.spinner("AI is analyzing... 🤖"):
                 results = model(image, imgsz=224)
@@ -179,27 +175,31 @@ def analyzer():
 
                 st.success(f"🎯 {class_name.replace('_',' ').title()} ({confidence:.1%})")
 
-    # ---------------- NUTRITION ----------------
+    # ---------------- NUTRITION (with robust matching) ----------------
     if "detected_food" in st.session_state:
         st.markdown("### ⚖️ Nutrition Calculator")
 
-        food_key = st.session_state.detected_food.lower()
+        food_key = st.session_state.detected_food.lower().strip()
 
-        # Match DB
+        # ✅ Improved matching (from first code block)
         if food_key in DB:
             nutrients = DB[food_key]
         else:
-            matched = None
+            match = None
             for k in DB:
                 if k in food_key or food_key in k:
-                    matched = k
+                    match = k
                     break
-
-            if matched:
-                nutrients = DB[matched]
-                st.info(f"Using data for '{matched}'")
+            if match:
+                nutrients = DB[match]
+                st.info(f"Using data for {match}")
             else:
-                nutrients = {"calories":200,"protein":5,"carbs":20,"fat":10}
+                nutrients = {
+                    "calories": 200,
+                    "protein": 5,
+                    "carbs": 20,
+                    "fat": 10
+                }
                 st.warning("Using default nutrition values")
 
         weight = st.slider("Weight (grams)", 50, 500, 150)
@@ -207,10 +207,11 @@ def analyzer():
         if st.button("Calculate Nutrition"):
             factor = weight / 100
 
-            cal = nutrients["calories"] * factor
-            pro = nutrients["protein"] * factor
-            carb = nutrients["carbs"] * factor
-            fat = nutrients["fat"] * factor
+            # ✅ Safe access with .get()
+            cal = nutrients.get("calories", 200) * factor
+            pro = nutrients.get("protein", 5) * factor
+            carb = nutrients.get("carbs", 20) * factor
+            fat = nutrients.get("fat", 10) * factor
 
             st.metric("🔥 Calories", f"{cal:.1f}")
             st.metric("💪 Protein", f"{pro:.1f}")
@@ -221,23 +222,28 @@ def analyzer():
                 "value": [pro, carb, fat]
             }, index=["Protein", "Carbs", "Fat"]))
 
+            # ✅ Add timestamp to history
             st.session_state.history.append({
                 "food": food_key,
-                "cal": cal
+                "calories": cal,
+                "time": datetime.now().strftime("%H:%M:%S")
             })
+
 # ----------------------------- INSIGHTS ---------------------------------------
 def insights():
     st.title("📊 Insights")
 
     if not st.session_state.history:
-        st.info("No data yet")
+        st.info("No data yet. Go to the Analyzer and calculate some nutrition!")
         return
 
     df = pd.DataFrame(st.session_state.history)
-
     st.dataframe(df)
 
-    st.bar_chart(df.set_index("food"))
+    # Show total calories per food item
+    st.subheader("Total Calories per Food")
+    total_cal = df.groupby("food")["calories"].sum().sort_values(ascending=False)
+    st.bar_chart(total_cal)
 
 # ----------------------------- ROUTER -----------------------------------------
 if st.session_state.page == "Home":
