@@ -6,8 +6,6 @@ from PIL import Image
 import os
 import gdown
 from ultralytics import YOLO
-import plotly.express as px
-import plotly.graph_objects as go
 
 # ----------------------------- PAGE CONFIG ------------------------------------
 st.set_page_config(
@@ -176,7 +174,7 @@ if 'confidence' not in st.session_state:
 
 # ----------------------------- SIDEBAR NAVIGATION ----------------------------
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/706/706830.png", width=60)  # fallback emoji style
+    st.image("https://cdn-icons-png.flaticon.com/512/706/706830.png", width=60)
     st.markdown("## 🧠 NutriVision")
     st.markdown("---")
     page = st.radio(
@@ -191,7 +189,6 @@ with st.sidebar:
 
 # ----------------------------- PAGE: HOME (Landing) --------------------------
 def show_home():
-    # Dynamic greeting
     current_hour = datetime.now().hour
     if current_hour < 12:
         greeting = "Good morning ☀️"
@@ -276,7 +273,6 @@ def show_analyzer():
         
         if st.session_state.detected_food:
             food_key = st.session_state.detected_food
-            # Match nutrition data
             if food_key in NUTRIENT_DB:
                 nutrients = NUTRIENT_DB[food_key]
             else:
@@ -301,7 +297,6 @@ def show_analyzer():
                 carbs = round(nutrients['carbs'] * factor, 1)
                 fat = round(nutrients['fat'] * factor, 1)
                 
-                # Save to history with date
                 st.session_state.history.append({
                     'Food': food_key.replace('_', ' ').title(),
                     'Weight (g)': weight,
@@ -320,17 +315,14 @@ def show_analyzer():
                 with col3: st.metric("🍚 Carbs", f"{carbs} g")
                 with col4: st.metric("🥑 Fat", f"{fat} g")
                 
-                # Visualization: macro pie chart
-                fig = go.Figure(data=[go.Pie(
-                    labels=['Protein', 'Carbs', 'Fat'],
-                    values=[protein, carbs, fat],
-                    hole=0.4,
-                    marker_colors=['#2c7da0', '#61a5c2', '#89c2d9']
-                )])
-                fig.update_layout(margin=dict(t=20, b=20), height=300, paper_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig, use_container_width=True)
+                # Native Streamlit bar chart for macros
+                macro_df = pd.DataFrame({
+                    'Nutrient': ['Protein', 'Carbs', 'Fat'],
+                    'Grams': [protein, carbs, fat]
+                })
+                st.bar_chart(macro_df.set_index('Nutrient'), use_container_width=True)
                 
-                # Show progress toward daily goal
+                # Daily goal progress
                 today_cals = sum(entry['Calories (kcal)'] for entry in st.session_state.history 
                                  if entry['Date'] == datetime.now().strftime("%Y-%m-%d"))
                 remaining = max(0, st.session_state.daily_goal_kcal - today_cals)
@@ -341,7 +333,6 @@ def show_analyzer():
             st.info("👈 Upload an image and click 'Identify Food' to get started.")
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Extra feature: per-100g nutrient card if food detected
     if st.session_state.detected_food:
         st.markdown("---")
         st.subheader("📋 Nutritional profile (per 100g)")
@@ -359,7 +350,6 @@ def show_analyzer():
 def show_insights():
     st.markdown("## 📊 Insights & Food Log")
     
-    # Daily goal setting
     col_goal, col_clear = st.columns([2, 1])
     with col_goal:
         new_goal = st.number_input("🎯 Set daily calorie goal", min_value=500, max_value=5000, 
@@ -380,7 +370,6 @@ def show_insights():
     today_str = datetime.now().strftime("%Y-%m-%d")
     df_today = df_history[df_history['Date'] == today_str]
     
-    # Today's summary
     st.markdown("### Today's intake")
     if not df_today.empty:
         total_cals = df_today['Calories (kcal)'].sum()
@@ -394,28 +383,26 @@ def show_insights():
         with met3: st.metric("🍚 Total carbs", f"{total_carbs:.1f} g")
         with met4: st.metric("🥑 Total fat", f"{total_fat:.1f} g")
         
-        # Macro pie chart for today
-        fig_pie = px.pie(values=[total_protein, total_carbs, total_fat], 
-                         names=['Protein', 'Carbs', 'Fat'],
-                         title="Macronutrient distribution (today)",
-                         color_discrete_sequence=['#2c7da0', '#61a5c2', '#a9d6e5'])
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_pie, use_container_width=True)
+        # Macro breakdown as horizontal bar chart (native)
+        macro_today = pd.DataFrame({
+            'Macro': ['Protein', 'Carbs', 'Fat'],
+            'Grams': [total_protein, total_carbs, total_fat]
+        }).set_index('Macro')
+        st.subheader("Macronutrient distribution (today)")
+        st.bar_chart(macro_today, use_container_width=True)
         
-        # Calorie trend (bar chart per meal)
+        # Calories per meal (bar chart)
         if len(df_today) > 1:
-            fig_bar = px.bar(df_today, x='Time', y='Calories (kcal)', color='Food',
-                             title="Calories per meal (today)", text_auto='.0f')
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.subheader("Calories per meal (today)")
+            meal_chart = df_today.set_index('Time')[['Calories (kcal)']]
+            st.bar_chart(meal_chart, use_container_width=True)
     else:
         st.warning("No entries recorded today. Add a meal to see insights.")
     
-    # Full history table
     st.markdown("### 📜 Complete history")
     st.dataframe(df_history.drop(columns=['Date'] if 'Date' in df_history.columns else []), 
                  use_container_width=True, height=300)
     
-    # Download option
     csv = df_history.to_csv(index=False)
     st.download_button("📥 Download log as CSV", csv, "food_log.csv", use_container_width=True)
 
