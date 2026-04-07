@@ -166,21 +166,29 @@ if 'history' not in st.session_state:
 if 'daily_goal_kcal' not in st.session_state:
     st.session_state.daily_goal_kcal = 2000
 if 'page' not in st.session_state:
-    st.session_state.page = "Home"
+    st.session_state.page = "🏠 Home"          # ✅ fixed: now matches emoji
 if 'detected_food' not in st.session_state:
     st.session_state.detected_food = None
 if 'confidence' not in st.session_state:
     st.session_state.confidence = None
 
-# ----------------------------- SIDEBAR NAVIGATION ----------------------------
+# ----------------------------- SIDEBAR NAVIGATION (fixed index) --------------
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/706/706830.png", width=60)
     st.markdown("## 🧠 NutriVision")
     st.markdown("---")
+    
+    page_options = ["🏠 Home", "🍽️ Food Analyzer", "📊 Insights & History"]
+    # Safely get current index (fallback to 0 if not found)
+    try:
+        current_idx = page_options.index(st.session_state.page)
+    except ValueError:
+        current_idx = 0
+    
     page = st.radio(
         "Navigate",
-        ["🏠 Home", "🍽️ Food Analyzer", "📊 Insights & History"],
-        index=["🏠 Home", "🍽️ Food Analyzer", "📊 Insights & History"].index(st.session_state.page),
+        page_options,
+        index=current_idx,
         label_visibility="collapsed"
     )
     st.session_state.page = page
@@ -383,7 +391,7 @@ def show_insights():
         with met3: st.metric("🍚 Total carbs", f"{total_carbs:.1f} g")
         with met4: st.metric("🥑 Total fat", f"{total_fat:.1f} g")
         
-        # Macro breakdown as horizontal bar chart (native)
+        # Macro breakdown as bar chart (native)
         macro_today = pd.DataFrame({
             'Macro': ['Protein', 'Carbs', 'Fat'],
             'Grams': [total_protein, total_carbs, total_fat]
