@@ -83,10 +83,20 @@ model = load_model()
 @st.cache_data
 def load_data():
     df = pd.read_csv("nutrition_data.csv")
-    df.columns = df.columns.str.lower()
-    return df.set_index("food_class").to_dict("index")
 
-DB = load_data()
+    # Normalize column names
+    df.columns = df.columns.str.strip().str.lower()
+
+    # ✅ IMPORTANT: Rename properly
+    df = df.rename(columns={
+        'food_class': 'food_class',
+        'calories_per_100g': 'calories',
+        'protein_g_per_100g': 'protein',
+        'carbs_g_per_100g': 'carbs',
+        'fat_g_per_100g': 'fat'
+    })
+
+    return df.set_index("food_class").to_dict("index")
 
 # ----------------------------- SESSION ----------------------------------------
 if "page" not in st.session_state:
