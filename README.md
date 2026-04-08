@@ -8,8 +8,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-🚀 Live App: [nutrivision-ai.streamlit.app](https://nutrivision-ai.streamlit.app)  
-📂 GitHub Repo: [github.com/Srishtikumari510/NutriVision-AI](https://github.com/your-username/NutriVision-AI)
+🚀 Live App: [nutrivision-ai.streamlit.app](https://lntcnd8plgtvssafx7dvrq.streamlit.app/) 
+📂 GitHub Repo: [github.com/Srishtikumari510/NutriVision-AI](https://github.com/Srishtikumari510/-NutriScan-AI)
 
 ---
 
