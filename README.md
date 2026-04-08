@@ -51,6 +51,7 @@ Built using Streamlit and a custom-trained YOLO model, this project helps users 
 ---
 
  📂 Project Structure
+ ```
 
 NutriVision-AI/
 │
