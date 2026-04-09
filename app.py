@@ -175,7 +175,7 @@ def analyzer():
 
         if st.button("🔍 Identify Food", type="primary"):
             with st.spinner("AI is analyzing... 🤖"):
-                results = model(image, imgsz=200)
+                results = model(image, imgsz=640)
 
                 if results[0].probs is None:
                     st.error("❌ No food detected. Try another image.")
